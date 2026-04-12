@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner' // Import de sonner
 import { 
   LayoutDashboard, Plus, MessageSquare, Eye, 
   LogOut, Star, TrendingUp, 
@@ -104,24 +105,46 @@ export default function DashboardPage() {
       }])
     
     if (!error) {
+      toast.success("Espace créé avec succès !")
       setNewSpaceName('')
       fetchData(user.id)
     } else {
-      alert("Erreur : Ce nom est peut-être déjà utilisé pour un slug.")
+      toast.error("Erreur : Ce nom est peut-être déjà utilisé pour un slug.")
     }
     setIsCreating(false)
   }
 
+  // --- NOUVELLE FONCTION DE SUPPRESSION AVEC CONFIRMATION TOAST ---
   const deleteSpace = async (spaceId: string) => {
-    if (!confirm("Attention : supprimer ce projet supprimera tous les témoignages associés. Continuer ?")) return
-    const { error } = await supabase.from('spaces').delete().eq('id', spaceId)
-    if (error) alert(error.message)
-    else fetchData(user.id)
+    toast("Supprimer ce projet ?", {
+      description: "Cela supprimera définitivement tous les témoignages associés.",
+      action: {
+        label: "Supprimer",
+        onClick: async () => {
+          const promise = supabase.from('spaces').delete().eq('id', spaceId);
+          
+          toast.promise(promise as any, {
+            loading: 'Suppression...',
+            success: () => {
+              fetchData(user.id);
+              return 'Projet supprimé.';
+            },
+            error: (err) => `Erreur: ${err.message}`,
+          });
+        },
+      },
+      cancel: { label: "Annuler" },
+    });
   }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/')
+  }
+
+  const copyToClipboard = (text: string, message: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(message);
   }
 
   if (loading && !user) return (
@@ -229,10 +252,7 @@ export default function DashboardPage() {
                     <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
                       <p className="text-[9px] text-slate-500 uppercase font-black mb-1 tracking-widest">Collecte</p>
                       <button 
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/collect/${space.slug}`)
-                          alert("Lien de collecte copié !")
-                        }}
+                        onClick={() => copyToClipboard(`${window.location.origin}/collect/${space.slug}`, "Lien de collecte copié !")}
                         className="flex items-center gap-2 text-[11px] text-emerald-400 hover:text-emerald-300 transition font-mono truncate"
                       >
                         <Copy className="w-3 h-3" /> Copier le lien
@@ -241,10 +261,7 @@ export default function DashboardPage() {
                     <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
                       <p className="text-[9px] text-slate-500 uppercase font-black mb-1 tracking-widest">Wall of Love</p>
                       <button 
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/spaces/${space.id}/wall`)
-                          alert("Lien du mur copié !")
-                        }}
+                        onClick={() => copyToClipboard(`${window.location.origin}/spaces/${space.id}/wall`, "Lien du mur copié !")}
                         className="flex items-center gap-2 text-[11px] text-violet-400 hover:text-violet-300 transition font-mono truncate"
                       >
                         <Copy className="w-3 h-3" /> Copier le lien
