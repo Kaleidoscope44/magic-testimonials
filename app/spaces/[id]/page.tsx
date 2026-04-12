@@ -93,26 +93,37 @@ export default function SpaceDetails() {
   };
 
   // --- SUPPRESSION STYLÉE ---
-  const deleteTestimonial = async (tId: string) => {
-    // On garde un confirm simple mais on utilise toast.promise pour le retour
-    if (!confirm("Voulez-vous vraiment supprimer ce témoignage ?")) return
-    
-// On crée la requête
-    const promise = supabase
-      .from('testimonials')
-      .delete()
-      .eq('id', tId);
+const deleteTestimonial = (tId: string) => {
+  // On affiche un toast de confirmation
+  toast("Supprimer ce témoignage ?", {
+    description: "Cette action est irréversible.",
+    action: {
+      label: "Supprimer",
+      onClick: () => executeDelete(tId), // Si on clique, on lance la vraie suppression
+    },
+    cancel: {
+      label: "Annuler",
+      onClick: () => console.log("Suppression annulée"),
+    },
+  });
+};
 
-    // On force le type en "any" pour que TypeScript arrête de bloquer le build
-    toast.promise(promise as any, {
-      loading: 'Suppression en cours...',
-      success: () => {
-        fetchData();
-        return 'Témoignage supprimé du mur.';
-      },
-      error: 'Erreur lors de la suppression.',
-    });
-  }
+// La fonction qui fait le vrai travail après confirmation
+const executeDelete = async (tId: string) => {
+  const promise = supabase
+    .from('testimonials')
+    .delete()
+    .eq('id', tId);
+
+  toast.promise(promise as any, {
+    loading: 'Suppression en cours...',
+    success: () => {
+      fetchData();
+      return 'Témoignage supprimé.';
+    },
+    error: 'Erreur lors de la suppression.',
+  });
+};
 
   const copyEmbedCode = () => {
     const code = `<iframe src="${window.location.origin}/spaces/${id}/wall" width="100%" height="600px" frameborder="0"></iframe>`
