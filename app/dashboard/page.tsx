@@ -129,11 +129,11 @@ export default function DashboardPage() {
               fetchData(user.id);
               return 'Projet supprimé.';
             },
-            error: (err) => `Erreur: ${err.message}`,
+            error: (err: any) => `Erreur: ${err.message}`,
           });
         },
       },
-      cancel: { label: "Annuler" },
+      //cancel: { label: "Annuler" },
     });
   }
 
