@@ -4,13 +4,21 @@ import React, { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase'
 import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { toast } from 'sonner' // Ajouté
+import { toast } from 'sonner'
 import { 
   ArrowLeft, Star, Trash2, ExternalLink, 
-  Code, MessageSquare, Calendar, User, 
+  MessageSquare, Calendar, User, 
   Copy, Check, Loader2, Sparkles, Layout,
   Link as LinkIcon, Plus
 } from 'lucide-react'
+import { SiGoogle } from 'react-icons/si'
+
+// Petit composant SVG pour TripAdvisor
+const TripAdvisorIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm6.608 11.234a2.385 2.385 0 0 1-2.385 2.385 2.385 2.385 0 0 1-2.385-2.385 2.385 2.385 0 0 1 2.385-2.385 2.385 2.385 0 0 1 2.385 2.385zm-9.216 0A2.385 2.385 0 0 1 7.007 15.62a2.385 2.385 0 0 1-2.385-2.385 2.385 2.385 0 0 1 2.385-2.385 2.385 2.385 0 0 1 2.385 2.385zM12 17.5a4.5 4.5 0 0 1-4.182-2.835 5.485 5.485 0 0 0 8.364 0A4.5 4.5 0 0 1 12 17.5z"/>
+  </svg>
+)
 
 export default function SpaceDetails() {
   const { id } = useParams()
@@ -43,14 +51,12 @@ export default function SpaceDetails() {
     fetchData()
   }, [id])
 
-  // --- FONCTION IMPORTATION STYLÉE ---
   const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url) return;
 
     setImporting(true);
-    // On lance un toast de chargement persistant
-    const toastId = toast.loading("Le robot explore Google Maps pour vous...");
+    const toastId = toast.loading("Le robot explore les sites d'avis...");
 
     try {
       const response = await fetch('/api/import-review', {
@@ -60,76 +66,53 @@ export default function SpaceDetails() {
       });
 
       const reviews = await response.json();
-
       if (!response.ok) throw new Error(reviews.error || "Erreur lors de l'import");
 
       if (Array.isArray(reviews)) {
         const { error } = await supabase
           .from('testimonials')
           .upsert(reviews, { 
-            onConflict: 'client_name,content,space_id', 
+            onConflict: 'external_id', // Utilise external_id pour éviter les doublons
             ignoreDuplicates: true 
           });
 
         if (error) throw error;
         
-        // On remplace le toast de chargement par un succès
-        toast.success(`Succès ! ${reviews.length} avis ont été synchronisés.`, {
-          id: toastId,
-          description: "Les doublons ont été automatiquement filtrés.",
-        });
-
+        toast.success(`${reviews.length} avis synchronisés !`, { id: toastId });
         setUrl("");
         fetchData();
       }
     } catch (err: any) {
-      toast.error("Oups ! L'importation a échoué", {
-        id: toastId,
-        description: err.message
-      });
+      toast.error("Échec de l'importation", { id: toastId, description: err.message });
     } finally {
       setImporting(false);
     }
   };
 
-  // --- SUPPRESSION STYLÉE ---
-const deleteTestimonial = (tId: string) => {
-  // On affiche un toast de confirmation
-  toast("Supprimer ce témoignage ?", {
-    description: "Cette action est irréversible.",
-    action: {
-      label: "Supprimer",
-      onClick: () => executeDelete(tId), // Si on clique, on lance la vraie suppression
-    },
-    cancel: {
-      label: "Annuler",
-      onClick: () => console.log("Suppression annulée"),
-    },
-  });
-};
+  const deleteTestimonial = (tId: string) => {
+    toast("Supprimer ce témoignage ?", {
+      description: "Cette action est irréversible.",
+      action: {
+        label: "Supprimer",
+        onClick: () => executeDelete(tId),
+      },
+    });
+  };
 
-// La fonction qui fait le vrai travail après confirmation
-const executeDelete = async (tId: string) => {
-  const promise = supabase
-    .from('testimonials')
-    .delete()
-    .eq('id', tId);
-
-  toast.promise(promise as any, {
-    loading: 'Suppression en cours...',
-    success: () => {
-      fetchData();
-      return 'Témoignage supprimé.';
-    },
-    error: 'Erreur lors de la suppression.',
-  });
-};
+  const executeDelete = async (tId: string) => {
+    const promise = supabase.from('testimonials').delete().eq('id', tId);
+    toast.promise(promise as any, {
+      loading: 'Suppression...',
+      success: () => { fetchData(); return 'Supprimé.'; },
+      error: 'Erreur.',
+    });
+  };
 
   const copyEmbedCode = () => {
-    const code = `<iframe src="${window.location.origin}/spaces/${id}/wall" width="100%" height="600px" frameborder="0"></iframe>`
+    const code = `<iframe src="${window.location.origin}/spaces/${id}/wall" width="100%" height="600px" frameborder="0" style="border-radius:12px;"></iframe>`
     navigator.clipboard.writeText(code)
     setCopied(true)
-    toast.info("Code d'intégration copié !"); // Notification supplémentaire
+    toast.info("Code d'intégration copié !");
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -141,17 +124,12 @@ const executeDelete = async (tId: string) => {
 
   return (
     <main className="min-h-screen bg-[#09090f] text-white p-6 md:p-12 font-sans">
-      <div className="absolute top-0 right-0 w-[30%] h-[30%] bg-violet-600/5 blur-[120px] rounded-full pointer-events-none" />
-
       <div className="max-w-5xl mx-auto relative z-10">
         
         {/* --- HEADER --- */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
           <div>
-            <button 
-              onClick={() => router.push('/dashboard')}
-              className="flex items-center gap-2 text-slate-500 hover:text-white transition text-sm mb-4 group"
-            >
+            <button onClick={() => router.push('/dashboard')} className="flex items-center gap-2 text-slate-500 hover:text-white transition text-sm mb-4 group">
               <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
               Retour au dashboard
             </button>
@@ -160,47 +138,34 @@ const executeDelete = async (tId: string) => {
             </h1>
           </div>
 
-          <div className="flex gap-3 w-full md:w-auto">
-            <a 
-              href={`/spaces/${id}/wall`} 
-              target="_blank" 
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 px-5 py-2.5 rounded-xl font-bold transition text-sm"
-            >
-              <Layout className="w-4 h-4" />
-              Voir le Wall
-              <ExternalLink className="w-3 h-3 text-slate-500" />
-            </a>
-          </div>
+          <a href={`/spaces/${id}/wall`} target="_blank" className="flex items-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 px-5 py-2.5 rounded-xl font-bold transition text-sm">
+            <Layout className="w-4 h-4" />
+            Voir le Wall
+            <ExternalLink className="w-3 h-3 text-slate-500" />
+          </a>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           <div className="lg:col-span-2 space-y-8">
-            
             {/* --- BLOC IMPORT --- */}
             <div className="p-1 bg-gradient-to-r from-violet-500/20 to-indigo-500/20 rounded-[32px]">
               <div className="bg-[#0c0c14] p-6 rounded-[31px]">
                 <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-violet-400" />
-                  Importation Magique
+                  Importation Multi-Source
                 </h2>
                 <form onSubmit={handleImport} className="flex flex-col md:flex-row gap-3">
                   <div className="relative flex-1">
                     <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                     <input 
-                      type="url" 
-                      required 
-                      value={url} 
+                      type="url" required value={url} 
                       onChange={(e) => setUrl(e.target.value)}
-                      placeholder="Lien Google Maps..."
+                      placeholder="Lien Google Maps ou TripAdvisor..."
                       className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-violet-500 outline-none transition"
                     />
                   </div>
-                  <button 
-                    type="submit" 
-                    disabled={importing}
-                    className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white px-6 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-violet-900/20 min-w-[140px]"
-                  >
+                  <button type="submit" disabled={importing} className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white px-6 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition min-w-[140px]">
                     {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                     {importing ? 'Import...' : 'Importer'}
                   </button>
@@ -208,7 +173,7 @@ const executeDelete = async (tId: string) => {
               </div>
             </div>
 
-            {/* --- LISTE DES TÉMOIGNAGES --- */}
+            {/* --- LISTE --- */}
             <div className="space-y-4">
               <h2 className="text-sm font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
@@ -216,97 +181,70 @@ const executeDelete = async (tId: string) => {
               </h2>
 
               <AnimatePresence mode="popLayout">
-                {testimonials.length === 0 ? (
+                {testimonials.map((t) => (
                   <motion.div 
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                    className="p-12 border border-dashed border-white/10 rounded-[32px] text-center bg-white/[0.02]"
+                    key={t.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="p-6 bg-white/5 border border-white/10 rounded-[24px] group"
                   >
-                    <p className="text-slate-500 italic">Aucun avis reçu pour le moment...</p>
-                  </motion.div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {testimonials.map((t) => (
-                      <motion.div 
-                        key={t.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        whileHover={{ y: -4, backgroundColor: "rgba(255, 255, 255, 0.08)" }}
-                        className="p-6 bg-white/5 border border-white/10 rounded-[24px] transition-colors relative group"
-                      >
-                        <div className="flex justify-between items-start mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 flex items-center justify-center border border-violet-500/30 font-bold text-violet-400 text-xs">
-                              {t.client_name ? t.client_name[0].toUpperCase() : <User className="w-5 h-5" />}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-slate-100">{t.client_name}</h3>
-                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-400 uppercase font-black tracking-widest border border-violet-500/20">
-                                  {t.platform || 'Google'}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1 mt-1">
-                                {[...Array(5)].map((_, i) => (
-                                  <Star 
-                                    key={i} 
-                                    className={`w-3 h-3 ${i < t.rating ? 'text-yellow-500 fill-yellow-500' : 'text-slate-700'}`} 
-                                  />
-                                ))}
-                              </div>
-                            </div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center border border-white/10 font-bold text-violet-400 text-xs uppercase">
+                          {t.client_name ? t.client_name[0] : <User className="w-5 h-5" />}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-slate-100">{t.client_name}</h3>
+                            {/* BADGE DE PLATEFORME DYNAMIQUE */}
+                            <span className={`text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1 font-black tracking-widest border ${
+                              t.platform === 'tripadvisor' 
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                : 'bg-red-500/10 text-red-400 border-red-500/20'
+                            }`}>
+                              {t.platform === 'tripadvisor' ? <TripAdvisorIcon className="w-2.5 h-2.5" /> : <SiGoogle className="w-2.5 h-2.5" />}
+                              {t.platform || 'Google'}
+                            </span>
                           </div>
-                          <button 
-                            onClick={() => deleteTestimonial(t.id)}
-                            className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex gap-1 mt-1">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} className={`w-3 h-3 ${i < t.rating ? 'text-yellow-500 fill-yellow-500' : 'text-slate-700'}`} />
+                            ))}
+                          </div>
                         </div>
-                        <p className="text-slate-400 text-sm leading-relaxed italic">
-                          "{t.content}"
-                        </p>
-                        <div className="mt-4 pt-4 border-t border-white/5 flex items-center text-[10px] text-slate-600 font-bold uppercase tracking-tighter">
-                          <Calendar className="w-3 h-3 mr-1" />
-                          Reçu le {new Date(t.created_at).toLocaleDateString()}
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
+                      </div>
+                      <button onClick={() => deleteTestimonial(t.id)} className="p-2 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-slate-400 text-sm italic">"{t.content}"</p>
+                  </motion.div>
+                ))}
               </AnimatePresence>
             </div>
           </div>
 
-          {/* COLONNE DROITE (INTÉGRATION) */}
+          {/* COLONNE DROITE */}
           <div className="lg:col-span-1">
-            <div className="sticky top-28 space-y-6">
-               <div className="p-6 bg-gradient-to-br from-violet-600/10 to-indigo-600/10 border border-violet-500/20 rounded-[32px] overflow-hidden relative group">
-                 <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-                   <Sparkles className="w-5 h-5 text-violet-400" />
-                   Intégration
-                 </h2>
-                 <p className="text-slate-400 text-xs mb-6">
-                   Affichez ce mur d'avis sur votre propre site web.
-                 </p>
-                 <div className="bg-[#050508] border border-white/10 rounded-2xl p-4 font-mono text-[10px] text-violet-300 break-all">
-                   <pre className="whitespace-pre-wrap">
-                     {`<iframe \n  src="${typeof window !== 'undefined' ? window.location.origin : ''}/spaces/${id}/wall" \n  width="100%" \n  height="600px" \n  frameborder="0"\n></iframe>`}
-                   </pre>
-                 </div>
-                 <button 
-                   onClick={copyEmbedCode}
-                   className={`w-full mt-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                     copied ? 'bg-emerald-500 text-white' : 'bg-white text-black hover:bg-slate-200'
-                   }`}
-                 >
-                   {copied ? <><Check className="w-4 h-4" /> Copié !</> : <><Copy className="w-4 h-4" /> Copier le code</>}
-                 </button>
-               </div>
+            <div className="sticky top-28 p-6 bg-gradient-to-br from-violet-600/10 to-indigo-600/10 border border-violet-500/20 rounded-[32px]">
+              <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-violet-400" />
+                Intégration
+              </h2>
+              <p className="text-slate-400 text-xs mb-6">Copiez ce code pour afficher le mur sur votre site.</p>
+              <div className="bg-[#050508] border border-white/10 rounded-2xl p-4 font-mono text-[10px] text-violet-300 break-all overflow-hidden">
+                <pre className="whitespace-pre-wrap">
+                  {`<iframe \n  src="${typeof window !== 'undefined' ? window.location.origin : ''}/spaces/${id}/wall" \n  width="100%" \n  height="600px" \n  frameborder="0"\n  style="border-radius:12px;"\n></iframe>`}
+                </pre>
+              </div>
+              <button 
+                onClick={copyEmbedCode}
+                className={`w-full mt-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                  copied ? 'bg-emerald-500 text-white' : 'bg-white text-black hover:bg-slate-200'
+                }`}
+              >
+                {copied ? <><Check className="w-4 h-4" /> Copié !</> : <><Copy className="w-4 h-4" /> Copier le code</>}
+              </button>
             </div>
           </div>
-
         </div>
       </div>
     </main>

@@ -8,6 +8,13 @@ import { Star, Quote, Loader2, Heart, CheckCircle2, ShieldCheck, ExternalLink } 
 import { SiGoogle, SiFacebook, SiX } from 'react-icons/si'
 import { FaLinkedin } from 'react-icons/fa'
 
+// Petit composant SVG pour TripAdvisor (La chouette)
+const TripAdvisorIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm6.608 11.234a2.385 2.385 0 0 1-2.385 2.385 2.385 2.385 0 0 1-2.385-2.385 2.385 2.385 0 0 1 2.385-2.385 2.385 2.385 0 0 1 2.385 2.385zm-9.216 0A2.385 2.385 0 0 1 7.007 15.62a2.385 2.385 0 0 1-2.385-2.385 2.385 2.385 0 0 1 2.385-2.385 2.385 2.385 0 0 1 2.385 2.385zM12 17.5a4.5 4.5 0 0 1-4.182-2.835 5.485 5.485 0 0 0 8.364 0A4.5 4.5 0 0 1 12 17.5z"/>
+  </svg>
+)
+
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
   const now = new Date();
@@ -24,6 +31,12 @@ const PLATFORMS: Record<string, { icon: React.ReactNode, label: string, color: s
     label: 'Google', 
     color: 'text-[#EA4335]',
     bgColor: 'bg-[#EA4335]/10'
+  },
+  tripadvisor: { 
+    icon: <TripAdvisorIcon className="w-3 h-3 text-[#34E0A1]" />, // Vert TripAdvisor
+    label: 'TripAdvisor', 
+    color: 'text-[#008169]', // Un vert plus foncé pour le texte (lisibilité)
+    bgColor: 'bg-[#34E0A1]/10'
   },
   facebook: { 
     icon: <SiFacebook className="w-3 h-3 text-[#1877F2]" />, 
@@ -59,7 +72,6 @@ export default function WallOfLove() {
 
   useEffect(() => {
     const fetchAvis = async () => {
-      // On retire tout filtre complexe pour être sûr que ça s'affiche
       const { data, error } = await supabase
         .from('testimonials')
         .select('*')
@@ -93,7 +105,6 @@ export default function WallOfLove() {
         <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
           <AnimatePresence>
             {testimonials.map((t, index) => {
-              // Sécurité : si t.platform est vide ou inconnu, on prend 'direct'
               const platformKey = (t.platform && PLATFORMS[t.platform]) ? t.platform : 'direct';
               const platformInfo = PLATFORMS[platformKey];
 
