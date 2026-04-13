@@ -11,23 +11,35 @@ export async function POST(req: Request) {
 
     // --- 1. DÉTECTION DE LA PLATEFORME ---
     const isTripAdvisor = url.includes("tripadvisor");
+    const isTrustpilot = url.includes("trustpilot");
     
-    // On choisit l'acteur et le corps de la requête selon l'URL
-    const actorId = isTripAdvisor 
-      ? "maxcopell~tripadvisor-reviews" // Acteur TripAdvisor
-      : "compass~google-maps-reviews-scraper";  // Acteur Google
+    let actorId = "";
+    let requestBody: any = {};
 
-    const requestBody = isTripAdvisor 
-      ? {
-          "startUrls": [{"url": url}], // TripAdvisor scraper utilise souvent "urls"
-          "maxReviews": 3,
-          "reviewsSort": "newest"
-        }
-      : {
-          "startUrls": [{ "url": url }], // Google scraper utilise "startUrls"
-          "maxReviews": 3,
-          "reviewsSort": "newest"
-        };
+    if (isTrustpilot) {
+      // Acteur officiel Apify pour Trustpilot
+      actorId = "apify~trustpilot-scraper";
+      requestBody = {
+        "startUrls": [{ "url": url }],
+        "maxReviews": 10,
+        "proxyConfiguration": { "useApifyProxy": true } // Essentiel pour Trustpilot
+      };
+    } else if (isTripAdvisor) {
+      actorId = "maxcopell~tripadvisor-reviews";
+      requestBody = {
+        "startUrls": [{ "url": url }],
+        "maxReviews": 10,
+        "proxyConfiguration": { "useApifyProxy": true }
+      };
+    } else {
+      // Acteur Google Maps
+      actorId = "compass~google-maps-reviews-scraper";
+      requestBody = {
+        "startUrls": [{ "url": url }],
+        "maxReviews": 10,
+        "reviewsSort": "newest"
+      };
+    }
 
     // --- 2. LANCEMENT DU RUN ---
     const response = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${API_TOKEN}&waitForFinish=120`, {
@@ -49,13 +61,22 @@ export async function POST(req: Request) {
 
       // --- 3. TRANSFORMATION (MAPPING) DYNAMIQUE ---
       const reviews = items.map((review: any) => {
-        if (isTripAdvisor) {
-          // Mapping spécifique TripAdvisor
+        if (isTrustpilot) {
+          // Mapping spécifique Trustpilot
+          return {
+            client_name: review.consumer?.displayName || "Client Trustpilot",
+            // Trustpilot sépare souvent Title et Text
+            content: review.text ? (review.title ? `${review.title} : ${review.text}` : review.text) : review.title,
+            rating: Math.round(review.rating || 5),
+            platform: "trustpilot",
+            source_url: url,
+            space_id: spaceId,
+            external_id: review.id || Buffer.from(`${review.consumer?.displayName}-${review.createdAt}`).toString('base64')
+          }
+        } else if (isTripAdvisor) {
           return {
             client_name: review.user?.name || review.user?.username || "Client TripAdvisor",
-            // On combine le titre et le texte pour un rendu "stylé"
             content: review.title ? `${review.title} : ${review.text}` : review.text,
-            // TripAdvisor met souvent des notes comme 50, 40, etc. On divise par 10 si besoin.
             rating: Math.round(review.rating > 10 ? review.rating / 10 : review.rating || 5),
             platform: "tripadvisor",
             source_url: url,
@@ -63,7 +84,6 @@ export async function POST(req: Request) {
             external_id: review.id || Buffer.from(`${review.user?.name}-${review.publishedDate}`).toString('base64')
           }
         } else {
-          // Ton mapping Google actuel (inchangé)
           return {
             client_name: review.name || review.authorName || "Client Anonyme",
             content: review.text || "Avis sans texte",
@@ -86,4 +106,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Erreur interne au serveur" }, { status: 500 })
   }
 }
-

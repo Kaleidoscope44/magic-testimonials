@@ -15,6 +15,13 @@ const TripAdvisorIcon = ({ className }: { className?: string }) => (
   </svg>
 )
 
+// SVG pour l'étoile Trustpilot
+const TrustpilotIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M17.447 15.11l2.553 7.89-6.916-5.023-6.917 5.023 2.553-7.89L2 10.154h8.544L13.084 2l2.54 8.154H24l-6.553 4.956z" fill="#00b67a"/>
+  </svg>
+)
+
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
   const now = new Date();
@@ -56,6 +63,13 @@ const PLATFORMS: Record<string, { icon: React.ReactNode, label: string, color: s
     color: 'text-[#0A66C2]',
     bgColor: 'bg-[#0A66C2]/10'
   },
+  trustpilot: { 
+  icon: <TrustpilotIcon className="w-3 h-3" />, 
+  label: 'Trustpilot', 
+  color: 'text-[#00b67a]',
+  bgColor: 'bg-[#00b67a]/10'
+},
+
   direct: { 
     icon: <CheckCircle2 className="w-3 h-3 text-emerald-600" />, 
     label: 'Vérifié', 
