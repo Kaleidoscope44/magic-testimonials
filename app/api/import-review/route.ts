@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     
     // On choisit l'acteur et le corps de la requête selon l'URL
     const actorId = isTripAdvisor 
-      ? "maxcopell/tripadvisor-reviews" // Acteur TripAdvisor
+      ? "maxcopell~tripadvisor-reviews" // Acteur TripAdvisor
       : "compass~google-maps-reviews-scraper";  // Acteur Google
 
     const requestBody = isTripAdvisor 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
         }
       : {
           "startUrls": [{ "url": url }], // Google scraper utilise "startUrls"
-          "maxReviews": 20,
+          "maxReviews": 3,
           "reviewsSort": "newest"
         };
 
