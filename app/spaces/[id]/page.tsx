@@ -11,7 +11,7 @@ import {
   Copy, Check, Loader2, Sparkles, Layout,
   Link as LinkIcon, Plus
 } from 'lucide-react'
-import { SiGoogle } from 'react-icons/si'
+import { SiGoogle, SiTrustpilot } from 'react-icons/si'
 
 // Petit composant SVG pour TripAdvisor
 const TripAdvisorIcon = ({ className }: { className?: string }) => (
@@ -198,9 +198,15 @@ export default function SpaceDetails() {
                             <span className={`text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1 font-black tracking-widest border ${
                               t.platform === 'tripadvisor' 
                                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                                : 'bg-red-500/10 text-red-400 border-red-500/20'
+                                : t.platform === 'trustpilot'
+                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' // Couleur Trustpilot
+                                : 'bg-red-500/10 text-red-400 border-red-500/20'    // Couleur Google
                             }`}>
-                              {t.platform === 'tripadvisor' ? <TripAdvisorIcon className="w-2.5 h-2.5" /> : <SiGoogle className="w-2.5 h-2.5" />}
+                              {t.platform === 'tripadvisor' && <TripAdvisorIcon className="w-2.5 h-2.5" />}
+                              {t.platform === 'trustpilot' && <SiTrustpilot className="w-2.5 h-2.5" />}
+                              {t.platform === 'google' && <SiGoogle className="w-2.5 h-2.5" />}
+                              {!t.platform && <SiGoogle className="w-2.5 h-2.5" />} 
+                              
                               {t.platform || 'Google'}
                             </span>
                           </div>
@@ -250,3 +256,4 @@ export default function SpaceDetails() {
     </main>
   )
 }
+

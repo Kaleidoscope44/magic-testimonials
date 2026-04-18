@@ -6,33 +6,54 @@ export async function POST(req: Request) {
     const API_TOKEN = process.env.APIFY_API_TOKEN
 
     if (!API_TOKEN) {
-      return NextResponse.json({ error: "Clé API manquante dans le fichier .env" }, { status: 500 })
+      return NextResponse.json({ error: "Clé API manquante" }, { status: 500 })
     }
 
-    // --- 1. DÉTECTION DE LA PLATEFORME ---
     const isTripAdvisor = url.includes("tripadvisor");
     const isTrustpilot = url.includes("trustpilot");
     
     let actorId = "";
     let requestBody: any = {};
 
+    // --- CONFIGURATION PAR PLATEFORME ---
     if (isTrustpilot) {
-      // Acteur officiel Apify pour Trustpilot
-      actorId = "apify~trustpilot-scraper";
+      // Pour Trustpilot : On garde Playwright qui est le seul à passer en gratuit
+      actorId = "apify~playwright-scraper";
       requestBody = {
         "startUrls": [{ "url": url }],
-        "maxReviews": 10,
-        "proxyConfiguration": { "useApifyProxy": true } // Essentiel pour Trustpilot
+        "maxPagesPerRun": 1,
+        "runMode": "PRODUCTION",
+        "pageFunction": `async function pageFunction(context) {
+            const { page } = context;
+            await page.waitForSelector('article', { timeout: 15000 });
+            return await page.$$eval('article', (articles) => {
+                return articles.map(el => {
+                    const name = el.querySelector('[data-consumer-name-typography]')?.innerText;
+                    const title = el.querySelector('[data-review-title-typography]')?.innerText;
+                    const body = el.querySelector('[data-review-content-typography]')?.innerText;
+                    const ratingImg = el.querySelector('div[data-review-rating] img');
+                    const rating = ratingImg ? ratingImg.getAttribute('alt').match(/\\d+/)[0] : "5";
+                    return {
+                        id: el.getAttribute('data-review-id') || Math.random().toString(),
+                        "user.name": name?.trim() || "Client Trustpilot",
+                        title: title?.trim() || "",
+                        body: body?.trim() || "",
+                        rating: rating
+                    };
+                });
+            });
+        }`
       };
     } else if (isTripAdvisor) {
-      actorId = "maxcopell~tripadvisor-reviews";
+      // Retour à ton code original qui marchait
+      actorId = "maxcopell~tripadvisor-reviews"; // Note le / au lieu du ~ souvent plus stable
       requestBody = {
         "startUrls": [{ "url": url }],
         "maxReviews": 10,
         "proxyConfiguration": { "useApifyProxy": true }
       };
     } else {
-      // Acteur Google Maps
+      // Retour à ton code original pour Google
       actorId = "compass~google-maps-reviews-scraper";
       requestBody = {
         "startUrls": [{ "url": url }],
@@ -41,7 +62,7 @@ export async function POST(req: Request) {
       };
     }
 
-    // --- 2. LANCEMENT DU RUN ---
+    // 1. LANCEMENT DU RUN
     const response = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${API_TOKEN}&waitForFinish=120`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,21 +80,21 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Aucun avis trouvé par le robot" }, { status: 404 })
       }
 
-      // --- 3. TRANSFORMATION (MAPPING) DYNAMIQUE ---
-      const reviews = items.map((review: any) => {
+      // 3. MAPPING DYNAMIQUE
+      const reviews = items.map((review: any, index: number) => {
         if (isTrustpilot) {
-          // Mapping spécifique Trustpilot
+          // Mapping pour Playwright
           return {
-            client_name: review.consumer?.displayName || "Client Trustpilot",
-            // Trustpilot sépare souvent Title et Text
-            content: review.text ? (review.title ? `${review.title} : ${review.text}` : review.text) : review.title,
-            rating: Math.round(review.rating || 5),
+            client_name: review["user.name"],
+            content: review.body ? (review.title ? `${review.title} : ${review.body}` : review.body) : review.title,
+            rating: Math.round(parseInt(review.rating) || 5),
             platform: "trustpilot",
             source_url: url,
             space_id: spaceId,
-            external_id: review.id || Buffer.from(`${review.consumer?.displayName}-${review.createdAt}`).toString('base64')
+            external_id: review.id || `tp-${index}`
           }
         } else if (isTripAdvisor) {
+          // Ton mapping original TripAdvisor
           return {
             client_name: review.user?.name || review.user?.username || "Client TripAdvisor",
             content: review.title ? `${review.title} : ${review.text}` : review.text,
@@ -81,9 +102,10 @@ export async function POST(req: Request) {
             platform: "tripadvisor",
             source_url: url,
             space_id: spaceId,
-            external_id: review.id || Buffer.from(`${review.user?.name}-${review.publishedDate}`).toString('base64')
+            external_id: review.id || `ta-${index}`
           }
         } else {
+          // Ton mapping original Google
           return {
             client_name: review.name || review.authorName || "Client Anonyme",
             content: review.text || "Avis sans texte",
@@ -91,7 +113,7 @@ export async function POST(req: Request) {
             platform: "google",
             source_url: url,
             space_id: spaceId,
-            external_id: review.reviewId || Buffer.from(`${review.name}-${review.text?.substring(0, 15)}`).toString('base64')
+            external_id: review.reviewId || `go-${index}`
           }
         }
       })
@@ -99,10 +121,9 @@ export async function POST(req: Request) {
       return NextResponse.json(reviews)
     }
 
-    return NextResponse.json({ error: "Apify n'a pas pu traiter la demande" }, { status: 500 })
+    return NextResponse.json({ error: "Échec d'Apify" }, { status: 500 })
 
   } catch (error: any) {
-    console.error("ERREUR SERVEUR:", error.message)
-    return NextResponse.json({ error: "Erreur interne au serveur" }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
