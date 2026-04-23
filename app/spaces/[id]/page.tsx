@@ -51,43 +51,43 @@ export default function SpaceDetails() {
     fetchData()
   }, [id])
 
-  const handleImport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url) return;
+const handleImport = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!url) return;
 
-    setImporting(true);
-    const toastId = toast.loading("Le robot explore les sites d'avis...");
+  setImporting(true);
+  const toastId = toast.loading("Le robot explore les sites d'avis...");
 
-    try {
-      const response = await fetch('/api/import-review', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url, spaceId: id })
-      });
+  try {
+    const response = await fetch('/api/import-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url, spaceId: id })
+    });
 
-      const reviews = await response.json();
-      if (!response.ok) throw new Error(reviews.error || "Erreur lors de l'import");
+    const result = await response.json();
 
-      if (Array.isArray(reviews)) {
-        const { error } = await supabase
-          .from('testimonials')
-          .upsert(reviews, { 
-            onConflict: 'external_id', // Utilise external_id pour éviter les doublons
-            ignoreDuplicates: true 
-          });
+    if (!response.ok) throw new Error(result.error || "Erreur lors de l'import");
 
-        if (error) throw error;
-        
-        toast.success(`${reviews.length} avis synchronisés !`, { id: toastId });
-        setUrl("");
-        fetchData();
-      }
-    } catch (err: any) {
-      toast.error("Échec de l'importation", { id: toastId, description: err.message });
-    } finally {
-      setImporting(false);
-    }
-  };
+    // Si on arrive ici, l'API a déjà inséré les données dans Supabase
+    toast.success(`Synchronisation réussie !`, { id: toastId });
+    // toast.success(`${result.length} avis synchronisés !`, { id: toastId });
+
+    setUrl("");
+    
+    // On rafraîchit simplement les données affichées à l'écran
+    fetchData(); 
+
+  } catch (err: any) {
+    console.error("Erreur import:", err);
+    toast.error("Échec de l'importation", { 
+      id: toastId, 
+      description: err.message 
+    });
+  } finally {
+    setImporting(false);
+  }
+};
 
   const deleteTestimonial = (tId: string) => {
     toast("Supprimer ce témoignage ?", {

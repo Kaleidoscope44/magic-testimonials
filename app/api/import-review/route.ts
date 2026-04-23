@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js' // Import direct du SDK
 
 export async function POST(req: Request) {
   try {
     const { url, spaceId } = await req.json()
     const API_TOKEN = process.env.APIFY_API_TOKEN
+    
+    // Initialisation du client Admin (ignore la RLS)
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY! // TA CLÉ SECRÈTE ICI
+    )
 
     if (!API_TOKEN) {
       return NextResponse.json({ error: "Clé API manquante" }, { status: 500 })
@@ -15,9 +22,7 @@ export async function POST(req: Request) {
     let actorId = "";
     let requestBody: any = {};
 
-    // --- CONFIGURATION PAR PLATEFORME ---
     if (isTrustpilot) {
-      // Pour Trustpilot : On garde Playwright qui est le seul à passer en gratuit
       actorId = "apify~playwright-scraper";
       requestBody = {
         "startUrls": [{ "url": url }],
@@ -45,15 +50,13 @@ export async function POST(req: Request) {
         }`
       };
     } else if (isTripAdvisor) {
-      // Retour à ton code original qui marchait
-      actorId = "maxcopell~tripadvisor-reviews"; // Note le / au lieu du ~ souvent plus stable
+      actorId = "maxcopell~tripadvisor-reviews";
       requestBody = {
         "startUrls": [{ "url": url }],
         "maxReviews": 10,
         "proxyConfiguration": { "useApifyProxy": true }
       };
     } else {
-      // Retour à ton code original pour Google
       actorId = "compass~google-maps-reviews-scraper";
       requestBody = {
         "startUrls": [{ "url": url }],
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
       };
     }
 
-    // 1. LANCEMENT DU RUN
+    // 1. LANCEMENT DU RUN APIFY
     const response = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${API_TOKEN}&waitForFinish=120`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -80,10 +83,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Aucun avis trouvé par le robot" }, { status: 404 })
       }
 
-      // 3. MAPPING DYNAMIQUE
+      // 2. MAPPING DYNAMIQUE
       const reviews = items.map((review: any, index: number) => {
         if (isTrustpilot) {
-          // Mapping pour Playwright
           return {
             client_name: review["user.name"],
             content: review.body ? (review.title ? `${review.title} : ${review.body}` : review.body) : review.title,
@@ -94,7 +96,6 @@ export async function POST(req: Request) {
             external_id: review.id || `tp-${index}`
           }
         } else if (isTripAdvisor) {
-          // Ton mapping original TripAdvisor
           return {
             client_name: review.user?.name || review.user?.username || "Client TripAdvisor",
             content: review.title ? `${review.title} : ${review.text}` : review.text,
@@ -105,7 +106,6 @@ export async function POST(req: Request) {
             external_id: review.id || `ta-${index}`
           }
         } else {
-          // Ton mapping original Google
           return {
             client_name: review.name || review.authorName || "Client Anonyme",
             content: review.text || "Avis sans texte",
@@ -118,12 +118,23 @@ export async function POST(req: Request) {
         }
       })
 
-      return NextResponse.json(reviews)
+      // 3. INSERTION DIRECTE DANS SUPABASE (Côté Serveur)
+      const { data, error: dbError } = await supabaseAdmin
+        .from('testimonials')
+        .upsert(reviews, { 
+            onConflict: 'external_id',
+            ignoreDuplicates: true 
+        })
+
+      if (dbError) throw dbError
+
+      return NextResponse.json({ success: true, count: reviews.length })
     }
 
     return NextResponse.json({ error: "Échec d'Apify" }, { status: 500 })
 
   } catch (error: any) {
+    console.error("ERREUR:", error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
