@@ -1,192 +1,258 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase'
 import { useParams } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Star, Send, CheckCircle2, Loader2, Sparkles, Quote } from 'lucide-react'
+import { toast } from 'sonner'
+import { Star, Loader2, Mail, User, MessageSquare, Sparkles, CheckCircle } from 'lucide-react'
 
-export default function CollectPage() {
-  const { slug } = useParams()
+function CornerBorders() {
+  return (
+    <>
+      <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-violet-500/30 pointer-events-none" />
+      <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-violet-500/30 pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-violet-500/30 pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-violet-500/30 pointer-events-none" />
+    </>
+  );
+}
+
+export default function LeaveReviewForm() {
+  // On récupère 'slug' ou 'id' de manière dynamique selon le nom de ton dossier Next.js
+  const params = useParams()
+  const currentParam = params.slug || params.id
+  
   const supabase = createClient()
 
-  const [space, setSpace] = useState<any>(null)
-  const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', content: '', rating: 5 })
-  const [loading, setLoading] = useState(true)
-  const [sent, setSent] = useState(false)
-  const [sending, setSending] = useState(false)
+  const [realSpaceId, setRealSpaceId] = useState<string | null>(null)
+  const [rating, setRating] = useState(5)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [content, setContent] = useState('')
+  
+  const [loadingSpace, setLoadingSpace] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
 
+  // ÉTAPE 1 : Trouver le vrai UUID de l'espace au chargement de la page
   useEffect(() => {
-    const initPage = async () => {
-      // 1. Récupérer l'espace
-      const { data: spaceData } = await supabase
+    const getSpaceUUID = async () => {
+      if (!currentParam) return
+
+      // Si le paramètre est déjà un UUID, on l'utilise directement
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentParam as string)
+      if (isUUID) {
+        setRealSpaceId(currentParam as string)
+        setLoadingSpace(false)
+        return
+      }
+
+      // Sinon, on va chercher l'UUID de l'espace qui correspond à ce slug (ex: 'boulagerie')
+      // Note : Adapte 'slug' ci-dessous si ta colonne s'appelle autrement dans ta table 'spaces' (ex: 'name_url')
+      const { data: space, error } = await supabase
         .from('spaces')
-        .select('*')
-        .eq('slug', slug)
-        .single()
+        .select('id')
+        .eq('slug', currentParam) 
+        .maybeSingle()
 
-      if (spaceData) {
-        setSpace(spaceData)
-        
-        // 2. Récupérer l'email de l'owner via une fonction RPC ou une table profil
-        // Si tu n'as pas de table 'profiles', on peut utiliser une astuce : 
-        // les emails sont protégés dans auth.users, mais pour ce SaaS, 
-        // on va supposer que tu as l'email ou on le récupère via une petite requête.
-        // NOTE: Pour que ça marche, l'owner_id doit être lié à ton utilisateur.
-        
-        // Incrémenter les vues
-        await supabase
-          .from('spaces')
-          .update({ views: (spaceData.views || 0) + 1 })
-          .eq('id', spaceData.id)
-
-        // Récupérer l'email du propriétaire (Owner)
-        // Note: Dans Supabase, pour accéder à l'email d'un autre user, il faut souvent une table 'profiles' publique.
-        // Si tu n'en as pas, on utilise l'ID pour l'instant ou on passe par l'API.
+      if (error) {
+        console.error("Erreur récupération Espace:", error)
+      } else if (space) {
+        setRealSpaceId(space.id)
       }
-      setLoading(false)
+      setLoadingSpace(false)
     }
-    initPage()
-  }, [slug, supabase])
 
-  const submitTestimonial = async (e: React.FormEvent) => {
+    getSpaceUUID()
+  }, [currentParam, supabase])
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setSending(true)
-
-    // 1. Insertion de l'avis
-    const { error } = await supabase.from('testimonials').insert([
-      { 
-        space_id: space.id, 
-        client_name: form.name, 
-        content: form.content, 
-        rating: form.rating 
-      }
-    ])
-
-    if (!error) {
-      setSent(true)
-
-      // 2. Notification par Email
-      try {
-        await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientName: form.name,
-            rating: form.rating,
-            content: form.content,
-            spaceName: space.name,
-            ownerId: space.owner_id // On envoie l'ID, l'API se chargera de trouver l'email
-          })
-        })
-      } catch (err) {
-        console.error("Erreur notification:", err)
-      }
-    } else {
-      alert("Erreur : " + error.message)
+    
+    if (!realSpaceId) {
+      return toast.error("Impossible de lier l'avis : Espace introuvable.")
     }
-    setSending(false)
+    if (!name || !email || !content) {
+      return toast.error("Veuillez remplir tous les champs requis.")
+    }
+
+    setSubmitting(true)
+    const toastId = toast.loading("Vérification et envoi de votre témoignage...")
+
+    try {
+      // ÉTAPE 2 : Vérification de l'adresse email sur le VRAI UUID
+      const { data: existingReview, error: checkError } = await supabase
+        .from('testimonials')
+        .select('id')
+        .eq('space_id', realSpaceId)
+        .eq('client_email', email.trim().toLowerCase())
+        .maybeSingle()
+
+      if (checkError) throw checkError
+
+      if (existingReview) {
+        setSubmitting(false)
+        return toast.error("Opération impossible", {
+          id: toastId,
+          description: "Un avis a déjà été transmis avec cette adresse email pour cet espace."
+        })
+      }
+
+      // ÉTAPE 3 : Insertion avec le VRAI UUID
+      const { error: insertError } = await supabase
+        .from('testimonials')
+        .insert([{
+          space_id: realSpaceId,
+          client_name: name,
+          client_email: email.trim().toLowerCase(),
+          rating: rating,
+          content: content,
+          platform: 'direct',
+          created_at: new Date().toISOString()
+        }])
+
+      if (insertError) throw insertError
+
+      toast.success("Merci ! Votre avis a été enregistré.", { id: toastId })
+      setSuccess(true)
+
+    } catch (err: any) {
+      console.error("Erreur complète Supabase :", err)
+      toast.error("Erreur lors de l'envoi", {
+        id: toastId,
+        description: err?.message || "Une erreur technique est survenue."
+      })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  // ... (Le reste de ton rendu JSX reste exactement le même)
-
-  if (loading) return (
-    <div className="min-h-screen bg-[#09090f] flex items-center justify-center">
-      <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
-    </div>
-  )
-  
-
-  if (!space) return (
-    <div className="min-h-screen bg-[#09090f] text-white flex items-center justify-center text-center p-6">
-      <div>
-        <h1 className="text-2xl font-bold mb-2">Oups ! 😶</h1>
-        <p className="text-slate-500">Cet espace n'existe pas ou a été supprimé.</p>
+  if (loadingSpace) {
+    return (
+      <div className="min-h-screen bg-[#09090f] flex items-center justify-center">
+        <Loader2 className="w-5 h-5 text-violet-500 animate-spin" />
       </div>
-    </div>
-  )
+    )
+  }
+
+  if (!realSpaceId) {
+    return (
+      <main className="min-h-screen bg-[#09090f] text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full p-6 bg-white/[0.01] border border-red-500/20 rounded-sm text-center">
+          <p className="text-xs text-red-400">Cet espace de collecte n'existe pas ou a été supprimé.</p>
+        </div>
+      </main>
+    )
+  }
+
+  if (success) {
+    return (
+      <main className="min-h-screen bg-[#09090f] text-white flex items-center justify-center p-6 antialiased">
+        <div className="max-w-md w-full p-8 bg-white/[0.01] border border-white/10 rounded-sm relative text-center shadow-xl">
+          <CornerBorders />
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-sm mb-4">
+            <CheckCircle className="w-6 h-6 text-emerald-400" />
+          </div>
+          <h1 className="text-xl font-black tracking-tight mb-2">Témoignage envoyé !</h1>
+          <p className="text-slate-400 text-xs leading-relaxed mb-6">
+            Votre précieux retour a été transmis avec succès à l'équipe. Merci pour votre temps et votre authenticité.
+          </p>
+        </div>
+      </main>
+    )
+  }
 
   return (
-    <main className="min-h-screen bg-[#09090f] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Glow Orbs pour l'ambiance */}
-      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-violet-600/10 blur-[120px] rounded-full" />
+    <main className="min-h-screen bg-[#09090f] text-white flex items-center justify-center p-6 antialiased">
+      <div className="absolute inset-0 opacity-[0.01] pointer-events-none" style={{ backgroundImage: "linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)", backgroundSize: "45px 45px" }} />
       
-      <div className="w-full max-w-xl relative z-10">
-        <AnimatePresence mode="wait">
-          {!sent ? (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white/5 border border-white/10 p-8 md:p-12 rounded-[40px] backdrop-blur-xl shadow-2xl"
-            >
-              <div className="text-center mb-10">
-                <div className="w-16 h-16 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-violet-500/20">
-                  <Quote className="text-white w-8 h-8 fill-white" />
-                </div>
-                <h1 className="text-2xl md:text-3xl font-black mb-2 italic">"{space.name}"</h1>
-                <p className="text-slate-400 text-sm font-medium tracking-wide">Laissez-nous un message !</p>
-              </div>
+      <div className="max-w-md w-full p-6 bg-white/[0.01] border border-white/10 rounded-sm relative shadow-2xl shadow-black/50">
+        <CornerBorders />
+        
+        <div className="mb-6 text-center">
+          <h1 className="text-lg font-black tracking-tight flex items-center justify-center gap-2 uppercase text-slate-100">
+            <Sparkles className="w-4 h-4 text-violet-400" />
+            Laisser un avis
+          </h1>
+          <p className="text-slate-400 text-xs mt-1">Votre retour nous aide à nous améliorer chaque jour.</p>
+        </div>
 
-              <form onSubmit={submitTestimonial} className="space-y-6">
-                {/* Sélecteur d'étoiles stylé */}
-                <div className="flex flex-col items-center gap-3">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Votre note</p>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star} type="button" 
-                        onClick={() => setForm({...form, rating: star})}
-                        className="transition-transform active:scale-75"
-                      >
-                        <Star className={`w-9 h-9 ${star <= form.rating ? 'text-yellow-500 fill-yellow-500' : 'text-slate-700 hover:text-slate-600'}`} />
-                      </button>
-                    ))}
-                  </div>
-                </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          
+          {/* Note par étoiles */}
+          <div className="space-y-1.5 text-center bg-white/[0.02] border border-white/5 p-3 rounded-sm">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Votre note</label>
+            <div className="flex justify-center gap-1">
+              {[...Array(5)].map((_, i) => {
+                const starValue = i + 1
+                return (
+                  <button
+                    key={i} type="button"
+                    onClick={() => setRating(starValue)}
+                    className="p-1 transition-transform hover:scale-110 active:scale-95"
+                  >
+                    <Star className={`w-6 h-6 ${starValue <= rating ? 'text-amber-400 fill-amber-400' : 'text-slate-800'}`} />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-                <div className="space-y-4">
-                  <input 
-                    type="text" placeholder="Votre nom" required
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 focus:outline-none focus:border-violet-500 transition text-sm"
-                    onChange={e => setForm({...form, name: e.target.value})}
-                  />
-                  <textarea 
-                    placeholder="Qu'avez-vous pensé de nous ?" required rows={4}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 focus:outline-none focus:border-violet-500 transition resize-none text-sm"
-                    onChange={e => setForm({...form, content: e.target.value})}
-                  />
-                </div>
+          {/* Nom complet */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Nom complet</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <input
+                type="text" required value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex: Alexandre Martin"
+                className="w-full bg-black/40 border border-white/10 rounded-sm pl-11 pr-4 py-3 text-xs focus:border-violet-500 focus:outline-none transition-all text-slate-200"
+              />
+            </div>
+          </div>
 
-                <button 
-                  type="submit" disabled={sending}
-                  className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 py-4 rounded-2xl font-black flex items-center justify-center gap-3 hover:shadow-[0_0_30px_rgba(139,92,246,0.3)] transition-all active:scale-[0.98] disabled:opacity-50"
-                >
-                  {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Send className="w-4 h-4" /> Publier mon avis</>}
-                </button>
-              </form>
-            </motion.div>
-          ) : (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-              className="bg-white/5 border border-emerald-500/20 p-12 rounded-[40px] text-center backdrop-blur-xl"
-            >
-              <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <CheckCircle2 className="text-emerald-400 w-10 h-10" />
-              </div>
-              <h2 className="text-3xl font-bold mb-4 italic">Merci {form.name.split(' ')[0]} !</h2>
-              <p className="text-slate-400 leading-relaxed">
-                Votre expérience a été enregistrée avec succès. <br/>
-                Vous aidez <span className="text-white font-bold">{space.name}</span> à grandir !
-              </p>
-            </motion.div>
+          {/* Adresse Email */}
+          <div className="space-y-1">
+            <div className="flex justify-between items-center">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Adresse email</label>
+              <span className="text-[9px] text-slate-500">Sécurité anti-doublon</span>
+            </div>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <input
+                type="email" required value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Ex: alex@entreprise.com"
+                className="w-full bg-black/40 border border-white/10 rounded-sm pl-11 pr-4 py-3 text-xs focus:border-violet-500 focus:outline-none transition-all text-slate-200"
+              />
+            </div>
+          </div>
 
-            )}
-        </AnimatePresence>
+          {/* Message */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Votre témoignage</label>
+            <div className="relative">
+              <MessageSquare className="absolute left-4 top-3.5 w-4 h-4 text-slate-500" />
+              <textarea
+                required rows={4} value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Racontez votre expérience en quelques lignes..."
+                className="w-full bg-black/40 border border-white/10 rounded-sm pl-11 pr-4 py-3 text-xs focus:border-violet-500 focus:outline-none transition-all text-slate-200 resize-none"
+              />
+            </div>
+          </div>
 
-        <p className="mt-12 text-center text-[10px] text-slate-600 uppercase tracking-[0.3em] font-bold flex items-center justify-center gap-2">
-          <Sparkles className="w-3 h-3 text-violet-500" />
-          Powered by TestiWall
-        </p>
+          {/* Bouton */}
+          <button
+            type="submit" disabled={submitting}
+            className="w-full mt-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 text-white py-3.5 rounded-sm text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-violet-600/10"
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {submitting ? 'Validation...' : 'Transmettre mon avis'}
+          </button>
+          
+        </form>
       </div>
     </main>
   )
